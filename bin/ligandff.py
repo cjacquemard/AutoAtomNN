@@ -29,6 +29,9 @@ def main(args):
 		os.mkdir(args.output_dirpath)
 
 	molecules = Molecule.from_file(args.ligands_filepath)
+	if len(ligands_sdf) >= 1000:
+		print(f"ERROR: Does not support 1000 molecules or more ({len(ligands_sdf)})!")
+		return 1
 
 	print(f"INFO: {len(molecules)} molecule(s) loaded")
 
@@ -37,8 +40,13 @@ def main(args):
 	os.chdir(args.output_dirpath)
 
 	for i, molecule in enumerate(molecules, 1):
-		mol_start = time()
 		prefix = f"{i:0>3d}"
+
+		if not molecule.name:
+			print(f"WARNING: Molecule {i} has no name defined in the file! Set default.")
+			molecule.name = f"{i:0>3d}"
+
+		mol_start = time()
 		print(f"INFO: Treating molecule {molecule.name} {prefix}...")
 		print("INFO: Assigning charges...")
 
