@@ -9,7 +9,7 @@ def main(args):
 	from openfe.setup.ligand_network_planning import generate_lomap_network
 	from openfe.setup.ligand_network_planning import generate_minimal_spanning_network
 	from openfe.setup.ligand_network_planning import generate_maximal_network
-	from openfe.lomap_scorers import default_lomap_score
+	from openfe import lomap_scorers
 
 	_MAPPERS = {
 		"lomap": LomapAtomMapper,
@@ -38,10 +38,12 @@ def main(args):
 	ligands_sdf = Molecule.from_file(args.ligands_filepath)
 	ligand_mols = [SmallMoleculeComponent.from_openff(sdf) for sdf in ligands_sdf]
 
+	breakpoint()
+
 	mapper = _MAPPERS[args.mapper]
 	network = _NETWORKS[args.network](
 		ligands=ligand_mols,
-		scorer=default_lomap_score,
+		scorer=lomap_scorers.default_lomap_score,
 		mappers=[mapper,]
 	)
 
@@ -50,7 +52,7 @@ def main(args):
 if __name__ == "__main__":
 	import argparse
 
-	parser = ArgumentParser()
+	parser = argparse.ArgumentParser()
 	parser.add_argument("-l", "--ligands", required=True, dest="ligands_filepath")
 	parser.add_argument("-o", "--output", required=True, dest="output_dirpath")
 	parser.add_argument("-w", "--overwrite", action="store_true")
