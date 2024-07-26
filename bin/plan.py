@@ -19,10 +19,10 @@ import json
 # from lomap import generate_lomap_network, LomapAtomMapper
 # from lomap.dbmol import _find_common_core
 
-# from openff.toolkit import Molecule
-# from openfe import SmallMoleculeComponent
-# from openfe.setup import LomapAtomMapper
-# from kartograf import KartografAtomMapper
+from openff.toolkit import Molecule
+from openfe import SmallMoleculeComponent
+from openfe.setup import LomapAtomMapper
+from kartograf import KartografAtomMapper
 import pandas as pd
 from openfe.setup.ligand_network_planning import generate_lomap_network
 from openfe.setup.ligand_network_planning import generate_minimal_spanning_network
@@ -74,12 +74,12 @@ def main(args):
 		return 1
 
 	ligand_indices = {} # Link names with ids
-	for ligand in enumerate(ligands_sdf, 1):
+	for i, ligand in enumerate(ligands_sdf, 1):
 		if not ligand.name:
 			print(f"WARNING: Ligand {i} has no name defined in the file! Set default.")
 			ligand.name = format_id(i)
 
-		ligand_indices[ligand] = ligand.name
+		ligand_indices[ligand.name] = i
 
 	# Generate network
 	ligand_mols = [SmallMoleculeComponent.from_openff(sdf) for sdf in ligands_sdf]
@@ -93,7 +93,7 @@ def main(args):
 
 	# Save figures to visualize network
 	network_fig = plot_atommapping_network(network)
-	network_fig.savefig(os.path.join(args.output_dirpath, "graph.png", dpi=200, bbox_inches='tight'))
+	network_fig.savefig(os.path.join(args.output_dirpath, "graph.png"), dpi=200, bbox_inches='tight')
 
 	# Save network and each edge
 	data = {
@@ -108,21 +108,21 @@ def main(args):
 		id_a = ligand_indices[edge.componentA.name]
 		id_b = ligand_indices[edge.componentB.name]
 
-		fmt_id_a = format_id(i)
-		fmt_id_b = format_id(i)
+		fmt_id_a = format_id(id_a)
+		fmt_id_b = format_id(id_b)
 
 		data["idA"].append(fmt_id_a)
 		data["idB"].append(fmt_id_b)
 		data["nameA"].append(edge.componentA.name)
 		data["nameB"].append(edge.componentB.name)
-		data["score"].append(f"{edge.score:.3f}")
+		data["score"].append(f"{edge.annotations.get('score', 'na'):.3f}")
 
 		# Plot
 		map_plot_filepath = os.path.join(args.output_dirpath, f"{fmt_id_a}_{fmt_id_b}.png")
 		edge.draw_to_file(map_plot_filepath)
 
 	df = pd.DataFrame(data)
-	df.to_string(os.path.join(arg.output_dirpath, "network.csv"), col_space=[_ID_WIDTH, _ID_WIDTH, _NAME_WIDTH, _NAME_WIDTH, _SCORE_WIDTH], index=None)
+	df.to_string(os.path.join(args.output_dirpath, "network.csv"), col_space=[_ID_WIDTH, _ID_WIDTH, _NAME_WIDTH, _NAME_WIDTH, _SCORE_WIDTH], index=None)
 
 	print("DONE")
 
