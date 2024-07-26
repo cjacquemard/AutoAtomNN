@@ -25,8 +25,18 @@ def main(args):
 		print(f"ERROR: Ligands file {args.ligands_filepath} not found or not readable!")
 		return 1
 
-	if not os.path.isdir(args.output_dirpath):
-		os.mkdir(args.output_dirpath)
+	if os.path.isdir(args.output_dirpath) and args.overwrite:
+		import shutil
+		while True:
+			answer = input(f"USER VALIDATION: The directory {os.path.abspath(args.output_dirpath)} will be deleted. Continue (Y|n)?")
+			if answer == 'Y':
+				shutil.rmtree(args.output_dirpath)
+				break
+			elif answer == 'n':
+				print("INFO: Interupting...")
+				return 1
+
+	os.mkdir(args.output_dirpath)
 
 	molecules = Molecule.from_file(args.ligands_filepath)
 	if len(ligands_sdf) >= 1000:
