@@ -60,11 +60,11 @@ def main(args):
 	ligands_sdf = Molecule.from_file(args.ligands_filepath)
 	ligand_mols = [SmallMoleculeComponent.from_openff(sdf) for sdf in ligands_sdf]
 
-	mapper = _MAPPERS[args.mapper]
+	mapper = _MAPPERS[args.mapper]()
 	network = _NETWORKS[args.network](
 		ligands=ligand_mols,
 		scorer=lomap_scorers.default_lomap_score,
-		mapper=mapper
+		mappers=[mapper,]
 	)
 
 	breakpoint()
