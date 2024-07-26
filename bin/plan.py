@@ -39,10 +39,13 @@ def generate_maximal_network(
 
 	nodes = list(ligands)
 
-	mapping_generator = itertools.chain.from_iterable(
-		mapper.suggest_mappings(molA, molB)
-		for molA, molB in itertools.combinations(nodes, 2)
-	)
+	mapping_generator = []
+	for molA, molB in itertools.combinations(nodes, 2):
+		try:
+			mapping_generator.append(mapper.suggest_mappings(molA, molB))
+		except TypeError:
+			breakpoint()
+
 	if scorer:
 		mappings = [mapping.with_annotations({'score': scorer(mapping)})
 					for mapping in mapping_generator]
@@ -116,8 +119,6 @@ def main(args):
 
 	ligands_sdf = Molecule.from_file(args.ligands_filepath)
 	ligand_mols = [SmallMoleculeComponent.from_openff(sdf) for sdf in ligands_sdf]
-
-	breakpoint()
 
 	mapper = _MAPPERS[args.mapper]
 	network = _NETWORKS[args.network](
