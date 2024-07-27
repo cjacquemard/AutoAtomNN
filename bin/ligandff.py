@@ -39,7 +39,7 @@ def main(args):
 	os.mkdir(args.output_dirpath)
 
 	molecules = Molecule.from_file(args.ligands_filepath)
-	if len(ligands_sdf) >= 1000:
+	if len(molecules) >= 1000:
 		print(f"ERROR: Does not support 1000 molecules or more ({len(ligands_sdf)})!")
 		return 1
 
