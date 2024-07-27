@@ -63,11 +63,13 @@ def main(args):
 		net_charge = molecule.total_charge
 		molecule.assign_partial_charges(partial_charge_method="am1bcc")
 
+		pdb_filename = prefix + ".pdb"
 		input_sdf_filename = prefix + ".sdf"
 		gaff_mol2_filename = prefix + ".gaff.mol2"
 		frcmod_filename = prefix + ".frcmod"
 
 		molecule.to_file(input_sdf_filename, file_format="sdf")
+		molecule.to_file(pdb_filename, file_format="pdb")
 
 		# Run ANTECHAMBER
 		print("INFO: Running ANTECHAMBER...")

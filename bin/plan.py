@@ -135,7 +135,6 @@ def main(args):
 	df.to_string(os.path.join(args.output_dirpath, "network.csv"), col_space=[_ID_WIDTH, _ID_WIDTH, _NAME_WIDTH, _NAME_WIDTH, _SCORE_WIDTH], index=None)
 
 	print("DONE")
-
 	return 0
 
 if __name__ == "__main__":
