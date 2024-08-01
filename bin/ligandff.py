@@ -1,6 +1,11 @@
 import sys
 import os
+import subprocess
 from time import time
+
+from openff.toolkit import Molecule
+from openff.toolkit.utils.rdkit_wrapper import UndefinedStereochemistryError
+from rdkit import Chem
 
 def clean_antechamber(dirpath):
 	try:
@@ -14,9 +19,6 @@ def clean_antechamber(dirpath):
 		print("DEV: Something wrong\n{err}")
 
 def main(args):
-	import subprocess
-	from openff.toolkit import Molecule
-
 	if os.path.isdir(args.output_dirpath) and not args.overwrite:
 		print(f"ERROR: directory {args.output_dirpath} already exists! Use '-w' to force overwrite.")
 		return 1
@@ -25,31 +27,34 @@ def main(args):
 		print(f"ERROR: Ligands file {args.ligands_filepath} not found or not readable!")
 		return 1
 
-	if os.path.isdir(args.output_dirpath) and args.overwrite:
-		import shutil
-		while True:
-			answer = input(f"USER VALIDATION: The directory {os.path.abspath(args.output_dirpath)} will be deleted. Continue (Y|n)?")
-			if answer == 'Y':
-				shutil.rmtree(args.output_dirpath)
-				break
-			elif answer == 'n':
-				print("INFO: Interupting...")
-				return 1
+	if not os.path.isdir(args.output_dirpath):
+		os.mkdir(args.output_dirpath)
+	elif args.overwrite:
+		print("WARNING: Files in the output directory will be overwriten.")
 
-	os.mkdir(args.output_dirpath)
 
-	molecules = Molecule.from_file(args.ligands_filepath)
-	if len(molecules) >= 1000:
-		print(f"ERROR: Does not support 1000 molecules or more ({len(ligands_sdf)})!")
+	suppl = Chem.SDMolSupplier(args.ligands_filepath)
+	rdmols = []
+	for mol in suppl:
+		rdmols.append(mol)
+
+	if len(rdmols) >= 1000:
+		print(f"ERROR: Does not support 1000 molecules or more ({len(rdmols)})!")
 		return 1
 
-	print(f"INFO: {len(molecules)} molecule(s) loaded")
+	print(f"INFO: {len(rdmols)} molecule(s) loaded")
 
 	# Go to the output folder to not mess cwd with ANTECHAMBER intermediate output files
 	cwd = os.getcwd()
 	os.chdir(args.output_dirpath)
 
-	for i, molecule in enumerate(molecules, 1):
+	for i, rdmol in enumerate(rdmols, 1):
+		try:
+			molecule = Molecule.from_rdkit(rdmol)
+		except UndefinedStereochemistryError:
+			print(f"WARNING: Unspecified stereo center was detected in molecule {i}! It could be a bug from OpenFF. Double check your structure!")
+			molecule = Molecule.from_rdkit(rdmol, allow_undefined_stereo=True)
+
 		prefix = f"{i:0>3d}"
 
 		if not molecule.name:
@@ -63,13 +68,11 @@ def main(args):
 		net_charge = molecule.total_charge
 		molecule.assign_partial_charges(partial_charge_method="am1bcc")
 
-		pdb_filename = prefix + ".pdb"
 		input_sdf_filename = prefix + ".sdf"
 		gaff_mol2_filename = prefix + ".gaff.mol2"
 		frcmod_filename = prefix + ".frcmod"
 
 		molecule.to_file(input_sdf_filename, file_format="sdf")
-		molecule.to_file(pdb_filename, file_format="pdb")
 
 		# Run ANTECHAMBER
 		print("INFO: Running ANTECHAMBER...")

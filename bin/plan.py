@@ -64,18 +64,10 @@ def main(args):
 		print(f"ERROR: Ligands file {args.ligands_filepath} not found or not readable!")
 		return 1
 
-	if os.path.isdir(args.output_dirpath) and args.overwrite:
-		import shutil
-		while True:
-			answer = input(f"USER VALIDATION: The directory {os.path.abspath(args.output_dirpath)} will be deleted. Continue (Y|n)?")
-			if answer == 'Y':
-				shutil.rmtree(args.output_dirpath)
-				break
-			elif answer == 'n':
-				print("INFO: Interupting...")
-				return 1
-
-	os.mkdir(args.output_dirpath)
+    if not os.path.isdir(args.output_dirpath):
+        os.mkdir(args.output_dirpath)
+    elif args.overwrite:
+        print("WARNING: Files in the output directory will be overwriten.")
 
 	# Load ligands and assign unique id for each ligand (order in the file)
 	ligands_sdf = Molecule.from_file(args.ligands_filepath)
