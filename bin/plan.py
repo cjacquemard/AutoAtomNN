@@ -64,10 +64,10 @@ def main(args):
 		print(f"ERROR: Ligands file {args.ligands_filepath} not found or not readable!")
 		return 1
 
-    if not os.path.isdir(args.output_dirpath):
-        os.mkdir(args.output_dirpath)
-    elif args.overwrite:
-        print("WARNING: Files in the output directory will be overwriten.")
+	if not os.path.isdir(args.output_dirpath):
+		os.mkdir(args.output_dirpath)
+	elif args.overwrite:
+		print("WARNING: Files in the output directory will be overwriten.")
 
 	# Load ligands and assign unique id for each ligand (order in the file)
 	ligands_sdf = Molecule.from_file(args.ligands_filepath)
