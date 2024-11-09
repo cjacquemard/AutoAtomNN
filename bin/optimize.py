@@ -5,6 +5,7 @@ from copy import copy
 from pathlib import Path
 
 import numba
+import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
@@ -14,6 +15,7 @@ from scipy.spatial.distance import cdist, pdist
 from sklearn.cluster import KMeans
 
 import sbs
+import cgo
 from filehandler import PDB, SDF
 
 _PYMOL_TEMPLATE = """# WARNING! Run this script in the directory where files are!
@@ -53,6 +55,9 @@ run {max_system_box_filename}
 
 center
 """
+
+class CONST:
+	INFO_FILENAME = "info.yml"
 
 def normalize(v):
 	norm = np.linalg.norm(v)
@@ -796,7 +801,7 @@ class GA:
 
 class System:
 	_N_INDIVIDUALS = 200
-	_MIN_DIST = 25.0
+	_MIN_DIST = 20.0
 	_SOLVENT_THICKNESS = 10
 	_INIT_CELL_SIZE = 15 # TODO: Use sphere radius of ligand 2
 
@@ -1012,7 +1017,10 @@ def main(args):
 	if not os.path.isdir(args.output_dirpath):
 		os.mkdir(args.output_dirpath)
 	elif args.overwrite:
-		print(f"WARNING: Files in the output directory {args.output_dirpath} will be overwriten.")
+		print(f"WARNING: Files in the output directory '{args.output_dirpath}' will be overwritten.")
+	else:
+		print(f"CRITICAL: The output directory '{args.output_dirpath}' already exists. Use '-w' to force overwrite.")
+		return 1
 
 	protein_file = PDB(args.protein_filepath)
 	protein_file.parse()
@@ -1072,12 +1080,14 @@ def main(args):
 
 	system.save(best_results)
 
-	# Save wrapped complex atoms around ligand 2
-	# wrapped_pos = system.best_result.wrapped_complex_positions
-	# with open(os.path.join(args.output_dirpath, "wrapped.xyz"), 'w') as f:
-	# 	# f.write(f"{wrapped_pos}\n\n")
-	# 	for position in wrapped_pos:
-	# 		f.write(f"H\t{position[0]:.4f}\t{position[1]:.4f}\t{position[2]:.4f}\n")
+	# Save information that will be use later to setup the systems
+	data = {
+		"displacement_vector": [float(x) for x in system.translation_vector] # Need this otherwise number type is numpy.float and pyaml does not like this
+	}
+	info_filepath = os.path.join(args.output_dirpath, CONST.INFO_FILENAME)
+	with open(info_filepath, 'w') as f:
+		breakpoint()
+		f.write(yaml.dump(data, default_flow_style=False))
 
 	return 0
 

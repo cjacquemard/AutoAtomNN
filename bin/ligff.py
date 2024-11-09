@@ -7,6 +7,8 @@ from openff.toolkit import Molecule
 from openff.toolkit.utils.rdkit_wrapper import UndefinedStereochemistryError
 from rdkit import Chem
 
+from common import LigandLoader
+
 def clean_antechamber(dirpath):
 	try:
 		os.remove(os.path.join(dirpath, "ANTECHAMBER_AC.AC"))
@@ -30,49 +32,55 @@ def main(args):
 	if not os.path.isdir(args.output_dirpath):
 		os.mkdir(args.output_dirpath)
 	elif args.overwrite:
-		print("WARNING: Files in the output directory will be overwriten.")
-
-
-	suppl = Chem.SDMolSupplier(args.ligands_filepath)
-	rdmols = []
-	for mol in suppl:
-		rdmols.append(mol)
-
-	if len(rdmols) >= 1000:
-		print(f"ERROR: Does not support 1000 molecules or more ({len(rdmols)})!")
+		print(f"WARNING: Files in the output directory '{args.output_dirpath}' will be overwritten.")
+	else:
+		print(f"CRITICAL: The output directory '{args.output_dirpath}' already exists. Use '-w' to force overwrite.")
 		return 1
 
-	print(f"INFO: {len(rdmols)} molecule(s) loaded")
+
+	# Load ligands
+	mol_loader = LigandLoader(args.ligands_filepath)
+	mols = mol_loader.raw_openff_mols	
+
+	# suppl = Chem.SDMolSupplier(args.ligands_filepath, sanitize=False, removeHs=False, strictParsing=False)
+	# rdmols = []
+	# for mol in suppl:
+	# 	rdmols.append(mol)
+
+	# if len(rdmols) >= 1000:
+	# 	print(f"ERROR: Does not support 1000 molecules or more ({len(rdmols)})!")
+	# 	return 1
+
+	# print(f"INFO: {len(rdmols)} molecule(s) loaded")
 
 	# Go to the output folder to not mess cwd with ANTECHAMBER intermediate output files
 	cwd = os.getcwd()
 	os.chdir(args.output_dirpath)
 
-	for i, rdmol in enumerate(rdmols, 1):
-		try:
-			molecule = Molecule.from_rdkit(rdmol)
-		except UndefinedStereochemistryError:
-			print(f"WARNING: Unspecified stereo center was detected in molecule {i}! It could be a bug from OpenFF. Double check your structure!")
-			molecule = Molecule.from_rdkit(rdmol, allow_undefined_stereo=True)
+	# for i, rdmol in enumerate(rdmols, 1):
+	for i, mol in enumerate(mols, 1):
+		prefix = LigandLoader.format_id(i)
 
-		prefix = f"{i:0>3d}"
-
-		if not molecule.name:
+		if not mol.name:
 			print(f"WARNING: Molecule {i} has no name defined in the file! Set default.")
-			molecule.name = f"{i:0>3d}"
+			mol.name = plan.format_id(i)
 
 		mol_start = time()
-		print(f"INFO: Treating molecule {molecule.name} {prefix}...")
+		print(f"INFO: Treating molecule {mol.name} {prefix}...")
 		print("INFO: Assigning charges...")
 
-		net_charge = molecule.total_charge
-		molecule.assign_partial_charges(partial_charge_method="am1bcc")
+		net_charge = mol.total_charge
+
+		if net_charge != 0:
+			print(f"ERROR! Molecule {mol.name} {prefix} has a net charge of {net_charge}. Non neutral molecule is NOT supported by ANI2x!")
+
+		mol.assign_partial_charges(partial_charge_method="am1bcc")
 
 		input_sdf_filename = prefix + ".sdf"
 		gaff_mol2_filename = prefix + ".gaff.mol2"
 		frcmod_filename = prefix + ".frcmod"
 
-		molecule.to_file(input_sdf_filename, file_format="sdf")
+		mol.to_file(input_sdf_filename, file_format="sdf")
 
 		# Run ANTECHAMBER
 		print("INFO: Running ANTECHAMBER...")
@@ -81,7 +89,7 @@ def main(args):
 		output = subprocess.getoutput(cmd)
 
 		if not os.path.isfile(gaff_mol2_filename):
-			print(f"WARNING: ANTECHAMBER failed for molecule {molecule.name} in {os.path.basname(input_sdf_filename)}")
+			print(f"WARNING: ANTECHAMBER failed for molecule {mol.name} in {os.path.basname(input_sdf_filename)}")
 			continue
 
 		# Run PARMCHK
@@ -90,7 +98,7 @@ def main(args):
 		output = subprocess.getoutput(cmd)
 
 		if not os.path.isfile(gaff_mol2_filename):
-			print(f"WARNING: PARMCHK failed for molecule {molecule.name} in {os.path.basname(input_sdf_filename)}")
+			print(f"WARNING: PARMCHK failed for molecule {mol.name} in {os.path.basname(input_sdf_filename)}")
 			continue
 
 		print(f"INFO: Molecule {prefix} done in {time() - mol_start:.1f} s")

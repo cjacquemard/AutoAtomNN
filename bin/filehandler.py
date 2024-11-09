@@ -1,3 +1,5 @@
+from copy import copy
+
 import numpy as np
 
 class AtomField:
@@ -150,8 +152,20 @@ class PDB(MolFileHandler):
 		return np.vstack([self._data["x"], self._data["y"], self._data["z"]]).T
 
 	@property
+	def names(self):
+		return self._data["name"]
+
+	@property
 	def elements(self):
 		return self._data["element"]
+
+	@property
+	def resnames(self):
+		return self._data["resname"]
+
+	@property
+	def resids(self):
+		return self._data["resid"]
 
 	def set_positions(self, positions):
 		self._data["x"] = positions[:,0]

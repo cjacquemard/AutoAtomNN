@@ -19,6 +19,7 @@ import json
 # from lomap import generate_lomap_network, LomapAtomMapper
 # from lomap.dbmol import _find_common_core
 
+from rdkit import Chem
 from openff.toolkit import Molecule
 from openfe import SmallMoleculeComponent
 from openfe.setup import LomapAtomMapper
@@ -30,6 +31,7 @@ from openfe.setup.ligand_network_planning import generate_maximal_network
 from openfe import lomap_scorers
 from openfe.utils.atommapping_network_plotting import plot_atommapping_network
 
+from common import LigandLoader
 
 def generate_lomap_network_wrapper(ligands, mappers, scorer):
 	return generate_lomap_network(molecules=ligands, mappers=mappers, scorer=scorer)
@@ -42,6 +44,15 @@ def format_id(index):
 _ID_WIDTH = 5
 _NAME_WIDTH = 5
 _SCORE_WIDTH = 8
+
+_NETWORK_FILENAME = "network.csv"
+_GRAPH_FILENAME = "graph.png"
+
+_ID_A_COLNAME = "idA"
+_ID_B_COLNAME = "idB"
+_NAME_A_COLNAME = "nameA"
+_NAME_B_COLNAME = "nameB"
+_SCORE_COLNAME = "score"
 
 def main(args):
 	_MAPPERS = {
@@ -67,19 +78,20 @@ def main(args):
 	if not os.path.isdir(args.output_dirpath):
 		os.mkdir(args.output_dirpath)
 	elif args.overwrite:
-		print("WARNING: Files in the output directory will be overwriten.")
+		print(f"WARNING: Files in the output directory '{args.output_dirpath}' will be overwritten.")
+	else:
+		print(f"CRITICAL: The output directory '{args.output_dirpath}' already exists. Use '-w' to force overwrite.")
+		return 1
 
 	# Load ligands and assign unique id for each ligand (order in the file)
-	ligands_sdf = Molecule.from_file(args.ligands_filepath)
-	if len(ligands_sdf) >= 1000:
-		print(f"ERROR: Does not support 1000 molecules or more ({len(ligands_sdf)})!")
-		return 1
+	mol_loader = LigandLoader(args.ligands_filepath)
+	ligands_sdf = mol_loader.raw_openff_mols
 
 	ligand_indices = {} # Link names with ids
 	for i, ligand in enumerate(ligands_sdf, 1):
 		if not ligand.name:
 			print(f"WARNING: Ligand {i} has no name defined in the file! Set default.")
-			ligand.name = format_id(i)
+			ligand.name = LigandLoader.format_id(i)
 
 		ligand_indices[ligand.name] = i
 
@@ -95,36 +107,36 @@ def main(args):
 
 	# Save figures to visualize network
 	network_fig = plot_atommapping_network(network)
-	network_fig.savefig(os.path.join(args.output_dirpath, "graph.png"), dpi=200, bbox_inches='tight')
+	network_fig.savefig(os.path.join(args.output_dirpath, _GRAPH_FILENAME), dpi=200, bbox_inches='tight')
 
 	# Save network and each edge
 	data = {
-		"idA": [],
-		"idB": [],
-		"nameA": [],
-		"nameB": [],
-		"score": [],
+		_ID_A_COLNAME: [],
+		_ID_B_COLNAME: [],
+		_NAME_A_COLNAME: [],
+		_NAME_B_COLNAME: [],
+		_SCORE_COLNAME: [],
 	}
 
 	for edge in network.edges:
 		id_a = ligand_indices[edge.componentA.name]
 		id_b = ligand_indices[edge.componentB.name]
 
-		fmt_id_a = format_id(id_a)
-		fmt_id_b = format_id(id_b)
+		fmt_id_a = LigandLoader.format_id(id_a)
+		fmt_id_b = LigandLoader.format_id(id_b)
 
-		data["idA"].append(fmt_id_a)
-		data["idB"].append(fmt_id_b)
-		data["nameA"].append(edge.componentA.name)
-		data["nameB"].append(edge.componentB.name)
-		data["score"].append(f"{edge.annotations.get('score', 'na'):.3f}")
+		data[_ID_A_COLNAME].append(fmt_id_a)
+		data[_ID_B_COLNAME].append(fmt_id_b)
+		data[_NAME_A_COLNAME].append(edge.componentA.name)
+		data[_NAME_B_COLNAME].append(edge.componentB.name)
+		data[_SCORE_COLNAME].append(f"{edge.annotations.get('score', 'na'):.3f}")
 
 		# Plot
 		map_plot_filepath = os.path.join(args.output_dirpath, f"{fmt_id_a}_{fmt_id_b}.png")
 		edge.draw_to_file(map_plot_filepath)
 
 	df = pd.DataFrame(data)
-	df.to_string(os.path.join(args.output_dirpath, "network.csv"), col_space=[_ID_WIDTH, _ID_WIDTH, _NAME_WIDTH, _NAME_WIDTH, _SCORE_WIDTH], index=None)
+	df.to_string(os.path.join(args.output_dirpath, _NETWORK_FILENAME), col_space=[_ID_WIDTH, _ID_WIDTH, _NAME_WIDTH, _NAME_WIDTH, _SCORE_WIDTH], index=None)
 
 	print("DONE")
 	return 0

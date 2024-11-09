@@ -11,4 +11,4 @@ python ../../bin/ligff.py -l optimize/ligands_1.sdf -o ligands -w
 
 # Make complexes for MD
 mkdir complexes 2> /dev/null
-python ../../bin/sysprep.py
+python ../../bin/sysprep.py -opt optimize -l ligands -n network -o complexes -w

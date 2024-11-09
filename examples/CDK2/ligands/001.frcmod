@@ -8,12 +8,12 @@ nb 14.010        0.530
 os 16.000        0.465
 nd 14.010        0.530
 na 14.010        0.530
+hn 1.008         0.161
 nu 14.010        0.530               same as nh 
 h5 1.008         0.135
 h1 1.008         0.135
 hc 1.008         0.135
 ha 1.008         0.135
-hn 1.008         0.161
 
 BOND
 ca-nb  488.00   1.339
@@ -30,8 +30,8 @@ ca-ca  461.10   1.398
 ca-ha  345.80   1.086
 ca-os  376.60   1.370
 ca-nd  467.70   1.352
-ca-na  420.50   1.384
 hn-na  408.40   1.010
+ca-na  420.50   1.384
 hn-nu  404.60   1.012       same as hn-nh, penalty score=  0.0
 
 ANGLE
@@ -39,8 +39,8 @@ ca-nb-ca   68.300     117.220
 ca-nu-ca   63.300     127.460   same as ca-nh-ca, penalty score=  0.0
 ca-nu-hn   48.400     116.070   same as ca-nh-hn, penalty score=  0.0
 ca-nd-cc   72.500     104.880
-ca-na-cc   67.400     113.150
 cc-na-hn   46.800     125.500
+ca-na-cc   67.400     113.150
 c3-c6-c6   62.900     111.510   same as c3-c3-c3, penalty score=  0.0
 c3-c6-hc   46.300     109.800   same as c3-c3-hc, penalty score=  0.0
 c3-os-ca   62.500     117.960
@@ -99,23 +99,23 @@ os-c3-c6-hc   1    0.250         0.000           1.000      same as hc-c3-c3-os,
 nd-ca-ca-os   4   14.500       180.000           2.000
 ca-ca-ca-os   4   14.500       180.000           2.000
 ca-ca-os-c3   2    1.800       180.000           2.000
-nd-cc-na-ca   4    6.800       180.000           2.000
 nd-cc-na-hn   4    6.800       180.000           2.000
+nd-cc-na-ca   4    6.800       180.000           2.000
 na-ca-ca-nd   4   14.500       180.000           2.000
 na-cc-nd-ca   2    9.500       180.000           2.000
 na-ca-nb-ca   2    9.600       180.000           2.000
+ca-ca-na-hn   4    1.200       180.000           2.000
+nb-ca-na-hn   4    1.200       180.000           2.000
 nu-ca-nb-ca   2    9.600       180.000           2.000
 ha-ca-ca-nu   4   14.500       180.000           2.000
 h5-cc-nd-ca   2    9.500       180.000           2.000
-h5-cc-na-ca   4    6.800       180.000           2.000
 h5-cc-na-hn   4    6.800       180.000           2.000
+h5-cc-na-ca   4    6.800       180.000           2.000
 h1-c3-c6-c6   9    1.400         0.000           3.000      same as X -c3-c3-X , penalty score=  0.0
 h1-c3-c6-hc   9    1.400         0.000           3.000      same as X -c3-c3-X , penalty score=  0.0
 h1-c3-os-ca   3    1.150         0.000           3.000
 hc-c6-c6-hc   1    0.150         0.000           3.000      same as hc-c3-c3-hc, penalty score=  0.0
 ha-ca-ca-ha   4   14.500       180.000           2.000
-ca-ca-na-hn   4    1.200       180.000           2.000
-nb-ca-na-hn   4    1.200       180.000           2.000
 ca-ca-nu-hn   4    4.200       180.000           2.000      same as X -ca-nh-X , penalty score=  0.0
 
 IMPROPER
@@ -138,12 +138,12 @@ NONBON
   os          1.6837  0.1700
   nd          1.8240  0.1700
   na          1.8240  0.1700
+  hn          0.6000  0.0157
   nu          1.8240  0.1700             same as nh 
   h5          1.3590  0.0150
   h1          1.3870  0.0157
   hc          1.4870  0.0157
   ha          1.4590  0.0150
-  hn          0.6000  0.0157
 
 
 
