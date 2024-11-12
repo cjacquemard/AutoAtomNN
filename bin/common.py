@@ -2,6 +2,7 @@ import sys
 import os
 import warnings
 
+import numpy as np
 from rdkit.Chem import AllChem
 from openff.toolkit import Molecule
 from openff.toolkit.utils.rdkit_wrapper import UndefinedStereochemistryError
@@ -16,6 +17,64 @@ class LigandError(Exception):
 	def __init__(self, message):
 		self.message = message
 		super().__init__(self.message)
+
+
+class RdkitHelper:
+	@staticmethod
+	def props_to_array(rdkit_objects, prop_name, ignore_missing=True, filtering=True):
+		# You can pass GetBonds() or GetAtoms() directly
+		rdkit_objects = [x for x in rdkit_objects]
+
+		indices = []
+		values = []
+		annotated_rdkit_objects = []
+		for ro in rdkit_objects:
+			d = ro.GetPropsAsDict()
+
+			if prop_name not in d:
+				if not ignore_missing:
+					raise ValueError("Prop name does not exist")
+				else:
+					if filtering:
+						continue
+					else:
+						indices.append(ro.GetIdx())
+						values.append(np.nan)
+						annotated_rdkit_objects.append(ro)						
+			else:
+				indices.append(ro.GetIdx())
+				values.append(d[prop_name])
+				annotated_rdkit_objects.append(ro)
+
+		return np.array(indices), np.array(values), np.array(annotated_rdkit_objects)		
+
+	@staticmethod
+	def array_to_props(rdkit_objects, prop_name, ignore_missing=True, filtering=True):
+		# You can pass GetBonds() or GetAtoms() directly
+		rdkit_objects = [x for x in rdkit_objects]
+
+		indices = []
+		values = []
+		annotated_rdkit_objects = []
+		for ro in rdkit_objects:
+			d = ro.GetPropsAsDict()
+
+			if prop_name not in d:
+				if not ignore_missing:
+					raise ValueError("Prop name does not exist")
+				else:
+					if filtering:
+						continue
+					else:
+						indices.append(ro.GetIdx())
+						values.append(np.nan)
+						annotated_rdkit_objects.append(ro)						
+			else:
+				indices.append(ro.GetIdx())
+				values.append(d[prop_name])
+				annotated_rdkit_objects.append(ro)
+
+		return np.array(indices), np.array(values), np.array(annotated_rdkit_objects)	
 
 
 class LigandLoader:

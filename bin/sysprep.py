@@ -15,34 +15,207 @@ from PIL import Image
 
 import plan
 import optimize
+import forcefield
+from common import RdkitHelper
 from filehandler import PDB
 
 # https://gist.github.com/fangkuoyu/dc785218e5d4d94c752e80f1aaba4fad
 def rdkit_to_nx(mol):
-    G = nx.Graph()
+	G = nx.Graph()
 
-    for atom in mol.GetAtoms():
-        G.add_node(atom.GetIdx(),
-                   atomic_num=atom.GetAtomicNum(),
-                   is_aromatic=atom.GetIsAromatic(),
-                   atom_symbol=atom.GetSymbol())
-        
-    for bond in mol.GetBonds():
-        G.add_edge(bond.GetBeginAtomIdx(),
-                   bond.GetEndAtomIdx(),
-                   bond_type=bond.GetBondType())
-        
-    return G
+	for atom in mol.GetAtoms():
+		G.add_node(atom.GetIdx(),
+				   atomic_num=atom.GetAtomicNum(),
+				   is_aromatic=atom.GetIsAromatic(),
+				   atom_symbol=atom.GetSymbol(),
+				   **atom.GetPropsAsDict())
+		
+	for bond in mol.GetBonds():
+		G.add_edge(bond.GetBeginAtomIdx(),
+				   bond.GetEndAtomIdx(),
+				   bond_type=bond.GetBondType(),
+				   **bond.GetPropsAsDict())
+		
+	return G
 
 
-def boltzmann(dE, t):
-	# NOTE: Unit in kcal/mol and Kelvin
-	return np.exp(-dE/(1.987E-3 * t))
+def molid(mol):
+	for i, atom in enumerate(mol.GetAtoms()):
+		atom.SetAtomMapNum(i)
+	return mol
 
-# def molid(mol):
-# 	for i, atom in enumerate(mol.GetAtoms()):
-# 		atom.SetAtomMapNum(i)
-# 	return mol
+
+def plot_mol(rdmol):
+	# def get_props(rdkit_objects, prop_name, ignore_missing=True):
+	# 	# You can pass GetBonds() or GetAtoms() directly
+	# 	rdkit_objects = [x for x in rdkit_objects]
+
+	# 	indices = []
+	# 	values = []
+	# 	annotated_rdkit_objects = []
+	# 	for ro in rdkit_objects:
+	# 		d = ro.GetPropsAsDict()
+
+	# 		if prop_name not in d:
+	# 			if not ignore_missing:
+	# 				raise ValueError("Prop name does not exist")
+	# 			else:
+	# 				continue
+
+	# 		indices.append(ro.GetIdx())
+	# 		values.append(d[prop_name])
+	# 		annotated_rdkit_objects.append(ro)
+
+	# 	return indices, values, annotated_rdkit_objects
+
+	def annotate(rdkit_objects, prop_name):
+		# You can pass GetBonds() or GetAtoms() directly
+		rdkit_objects = [x for x in rdkit_objects]
+
+		if not rdkit_objects:
+			raise ValueError("rdkit_objects empty")
+
+		anno_prop_name = None
+		if isinstance(rdkit_objects[0], AllChem.rdchem.Atom):
+			anno_prop_name = "atomNote"
+		elif isinstance(rdkit_objects[0], AllChem.rdchem.Bond):
+			anno_prop_name = "bondNote"
+		else:
+			raise ValueError("rdkit_objects must be Atom or Bond")
+
+		indices, values, annotated_rdkit_objects = RdkitHelper.props_to_array(rdkit_objects, prop_name)
+
+		for ro, value in zip(annotated_rdkit_objects, values):
+			ro.SetProp(anno_prop_name, f"{value.item():.2f}")
+
+
+	def highlight(rdkit_objects, prop_name, min_color=(1, 0, 0), max_color=(0, 0, 1)):
+		indices, values, annotated_rdkit_objects = RdkitHelper.props_to_array(rdkit_objects, prop_name)
+
+		# Must store a list with Python int otherwise rdkit complains
+		indices = [x.item() for x in indices]
+
+		norm_values = (values - values.min()) / ((values.max() - values.min()))
+
+		min_color = np.array(min_color)
+		max_color = np.array(max_color)
+		if max_color.shape[0] != 3:
+			raise ValueError("Color must be defined as RGB ")
+		min_color = min_color - min_color.min() / (min_color.max() - min_color.min()) # RGB values are between 0 and 1
+		max_color = max_color - max_color.min() / (max_color.max() - max_color.min()) # RGB values are between 0 and 1
+		colors = min_color + (max_color - min_color) * norm_values[:,np.newaxis]
+
+		d_colors = {}
+		for index, color in zip(indices, colors):
+			d_colors[index] = tuple(color)
+
+		return indices, d_colors
+
+	def rdmol_to_image(rdmol, **kwargs):
+		d2d = Draw.MolDraw2DCairo(500,500)
+		Draw.rdMolDraw2D.PrepareAndDrawMolecule(d2d, rdmol, **kwargs)
+
+		# Keep a trace of arguments
+		# Draw.rdMolDraw2D.PrepareAndDrawMolecule(d2d, rdmol, kekulize=False,
+		# 	highlightAtoms=highlight_atoms, highlightAtomColors=highlight_atom_colors,
+		# 	highlightBonds=highlight_bonds,highlightBondColors=highlight_bond_colors
+		# )
+
+		d2d.FinishDrawing()
+		sio = BytesIO(d2d.GetDrawingText())
+		return Image.open(sio)
+
+	def anno_light(draw_mol,
+			anno_atom_prop_name=None,
+			highlight_atom_prop_name=None,
+			anno_bond_prop_name=None,
+			highlight_bond_prop_name=None):
+		draw_mol = AllChem.Mol(draw_mol) # copy
+
+		if anno_atom_prop_name is not None:
+			annotate(draw_mol.GetAtoms(), anno_atom_prop_name)
+
+		if anno_bond_prop_name is not None:
+			annotate(draw_mol.GetBonds(), anno_bond_prop_name)
+
+		draw_dict = {"kekulize": False}
+		if highlight_atom_prop_name is not None:
+			atom_indices, atom_colors = highlight(draw_mol.GetAtoms(), highlight_atom_prop_name)
+			draw_dict.update({"highlightAtoms": atom_indices, "highlightAtomColors": atom_colors})
+
+		if highlight_bond_prop_name is not None:
+			bond_indices, bond_colors = highlight(draw_mol.GetBonds(), highlight_bond_prop_name)
+			draw_dict.update({"highlightBonds": bond_indices, "highlightBondColors": bond_colors})
+
+		return rdmol_to_image(draw_mol, **draw_dict)
+
+
+	draw_mol = AllChem.Mol(rdmol) # copy
+
+	# Remove molAtomMapNumber, otherwise atom indices are drawn
+	for atom in draw_mol.GetAtoms():
+		atom.ClearProp("molAtomMapNumber")
+
+	# Draw combo scores
+	# bond_combo_img = anno_light(draw_mol, anno_bond_prop_name="combo_score", highlight_bond_prop_name="combo_score")
+	# bond_rigidity_img = anno_light(draw_mol, anno_bond_prop_name="rigidity_score", highlight_bond_prop_name="rigidity_score")
+	# bond_strain_img = anno_light(draw_mol, anno_bond_prop_name="strain_score", highlight_bond_prop_name="strain_score")
+
+	# center_path_img = anno_light(draw_mol, anno_atom_prop_name="center_path_score", highlight_atom_prop_name="center_path_score")
+	weighted_center_path_img = anno_light(draw_mol, anno_atom_prop_name="weighted_center_path_score", highlight_atom_prop_name="weighted_center_path_score")
+
+	weighted_center_path_img.show()
+	breakpoint()
+	# bond_combo_mol_draw = AllChem.Mol(draw_mol)
+	# annotate(bond_combo_mol_draw.GetBonds(), "combo_score")
+	# bond_indices, bond_colors = highlight(bond_combo_mol_draw.GetBonds(), "combo_score")
+
+	# kwargs = {"kekulize": False, "highlightBonds": bond_indices, "highlightBondColors": bond_colors}
+	# bond_combo_img = rdmol_to_image(bond_combo_mol_draw, **kwargs)
+
+	# # Draw rigidity scores
+	# bond_rigidity_mol_draw = AllChem.Mol(draw_mol)
+	# annotate(bond_combo_mol_draw.GetBonds(), "combo_score")
+	# bond_indices, bond_colors = highlight(bond_combo_mol_draw.GetBonds(), "combo_score")
+
+	# kwargs = {"kekulize": False, "highlightBonds": bond_indices, "highlightBondColors": bond_colors}
+	# bond_combo_img = rdmol_to_image(bond_combo_mol_draw, **kwargs)
+
+	# highlight_atoms = []
+	# highlight_atom_colors = {}
+	# for atom_id in atom_scores:
+	# 	score = longest_path_scores[atom_id]
+	# 	highlight_atoms.append(atom_id)
+
+	# 	if atom_id == mcs_closest_centroid_index:
+	# 		highlight_atom_colors[atom_id] = (0, 0, 1)
+	# 	else:
+	# 		highlight_atom_colors[atom_id] = (0, score / max_longest_score, 0)
+
+	# 	draw_mol.GetAtomWithIdx(atom_id).SetProp('atomNote', f"{score:.2f}")
+
+
+	# highlight_bonds = []
+	# highlight_bond_colors = {}
+	# for bond_id in bond_scores:
+	# 	s, r = bond_scores[bond_id]
+	# 	score = r * s
+	# 	highlight_bonds.append(bond_id)
+	# 	highlight_bond_colors[bond_id] = (score, 0, 0)
+	# 	draw_mol.GetBondWithIdx(bond_id).SetProp('bondNote', f"{score:.2f}")
+
+	# for atom in draw_mol.GetAtoms():
+	# 	atom.ClearProp("molAtomMapNumber")
+
+	# d2d = Draw.MolDraw2DCairo(500,500)
+	# Draw.rdMolDraw2D.PrepareAndDrawMolecule(d2d, draw_mol, kekulize=False,
+	# 	highlightAtoms=highlight_atoms, highlightAtomColors=highlight_atom_colors,
+	# 	highlightBonds=highlight_bonds,highlightBondColors=highlight_bond_colors
+	# )
+
+	# d2d.FinishDrawing()
+	# sio = BytesIO(d2d.GetDrawingText())
+	# Image.open(sio).show()
 
 
 _DEFAULTS = {
@@ -89,12 +262,203 @@ class MolobjectInfo:
 		raise NotImplementedError
 
 
+class CommonLigandFrame:
+	# NOTE: rdmols should be sanitized otherwise the forcefield parameters may be wrong
+	# Most of computed values are stored as rdkit Property
+	def __init__(self, rdmols):
+		self.rdmols = rdmols
+
+		self.mcs_result = None
+		self.mcs_query = None
+		self.mcs_mol = None
+
+	def mcs(self):
+		# Get Maximum Common Substructure
+		self.mcs_result = rdFMCS.FindMCS(self.rdmols)
+
+		# The ligands must share at least a substructure containing 3 or more atoms.
+		# We need 3 atoms to restraint ligand 1 and ligand 2 during the simulation.
+		if self.mcs_result.numAtoms < 3:
+			# TODO: Write a method that treat pairs of ligand instead
+			raise ValueError(f"MCS must contain 3 atoms or more")
+
+		# Get the MCS molecule
+		self.mcs = AllChem.MolFromSmarts(self.mcs_result.smartsString)
+		#self.mcs_query = AllChem.Mol(tmp_mcs) # Copy
+		self.mcs_query = AllChem.Mol(self.mcs) # Copy
+		# AllChem.SanitizeMol(tmp_mcs) # Inplace
+		# self.mcs = AllChem.rdmolops.AddHs(tmp_mcs)
+
+		# Get MCS atom indices for mols
+		self.rdmols_mcs_atom_indices = np.zeros((len(self.rdmols), self.mcs_query.GetNumAtoms())).astype(int)
+		for i, mol in enumerate(self.rdmols):
+			self.rdmols_mcs_atom_indices[i] = mol.GetSubstructMatch(self.mcs_query)
+
+		# Get MCS bond indices for mols
+		rdmols_mcs_bond_indices = []
+		for i, mol in enumerate(self.rdmols):
+			rdmol_mcs_atom_indices = self.rdmols_mcs_atom_indices[i]
+			rdmol_mcs_bond_indices = []
+			for bond in self.mcs_query.GetBonds():
+				idx1, idx2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+				rdmol_mcs_bond_indices.append(mol.GetBondBetweenAtoms(rdmol_mcs_atom_indices[idx1].item(), rdmol_mcs_atom_indices[idx2].item()).GetIdx())
+			rdmols_mcs_bond_indices.append(rdmol_mcs_bond_indices)
+		self.rdmols_mcs_bond_indices = np.array(rdmols_mcs_bond_indices)
+
+		# Compute the RMSD of all ligands MCS
+		self.rdmols_mcs_atom_positions = np.zeros((len(self.rdmols), self.mcs_query.GetNumAtoms(), 3))
+		for i, rdmol in enumerate(self.rdmols):
+			# Molecule must contain only 1 conformer
+			rdconf = rdmol.GetConformer(0)
+
+			# Get the position for atoms in the MCS
+			rdmol_mcs_atom_indices = self.rdmols_mcs_atom_indices[i]
+			self.rdmols_mcs_atom_positions[i] = rdconf.GetPositions()[rdmol_mcs_atom_indices]
+
+		# Compute mean positions
+		self.mcs_mean_atom_positions = np.mean(self.rdmols_mcs_atom_positions, axis=0)
+
+		# Compute standard deviation of atoms around mean positions (kinda like a RMSF)
+		self.mcs_std_atom_positions = np.sqrt(np.mean(np.sum((self.rdmols_mcs_atom_positions - self.mcs_mean_atom_positions)**2, axis=2), axis=0))
+		if np.any(self.mcs_std_atom_positions > 1.0):
+			print("WARNING: The MCS core of ligands atoms seems not well aligned!")
+
+		# Get the nearest atom of mols from centroid
+		self.mcs_centroid = self.mcs_mean_atom_positions.mean(axis=0)
+		centroid_to_atom_distances = np.linalg.norm(self.mcs_mean_atom_positions - self.mcs_centroid, axis=1)
+		self.mcs_center_atom_index = centroid_to_atom_distances.argmin()
+
+		# Set properties (is in MCS and center atom)
+		for i, rdmol in enumerate(self.rdmols):
+			rdmol_mcs_atom_indices = self.rdmols_mcs_atom_indices[i]
+			rdmol_mcs_bond_indices = self.rdmols_mcs_bond_indices[i]
+
+			# Is atom part of the MCS?
+			for atom in rdmol.GetAtoms():
+				if atom.GetIdx() in rdmol_mcs_atom_indices:
+					atom.SetBoolProp("is_mcs", True)
+				else:
+					atom.SetBoolProp("is_mcs", False)
+
+			# Is bond part of the MCS?
+			for bond in rdmol.GetBonds():
+				if bond.GetIdx() in rdmol_mcs_bond_indices:
+					bond.SetBoolProp("is_mcs", True)
+				else:
+					bond.SetBoolProp("is_mcs", False)
+
+			# The center atom index
+			rdmol_center_atom_index = rdmol_mcs_atom_indices[self.mcs_center_atom_index]
+			rdmol.SetIntProp("atom_center_index", rdmol_center_atom_index.item())
+
+
+	def find(self):
+		self.mcs()
+
+		rdmols_mcs_bond_combo_scores = np.zeros((len(self.rdmols), self.rdmols_mcs_bond_indices.shape[1]))
+		rdmols_mcs_bond_rigidity_scores = np.zeros((len(self.rdmols), self.rdmols_mcs_bond_indices.shape[1]))
+		rdmols_mcs_bond_strain_scores = np.zeros((len(self.rdmols), self.rdmols_mcs_bond_indices.shape[1]))
+
+		for mol_id, mol in enumerate(self.rdmols):
+			# The molecule must have 1 conformer only
+			conf = mol.GetConformer(0)
+
+			# Compute dihedral rigidity. Scores are stored as rdkit bond props
+			forcefield.mol_rigidity(conf)
+
+			bond_combo_indices, bond_combo_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "combo_score", filtering=False)
+			bond_rigidity_indices, bond_rigidity_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "rigidity_score", filtering=False)
+			bond_strain_indices, bond_strain_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "strain_score", filtering=False)
+
+			rdmol_mcs_bond_indices = self.rdmols_mcs_bond_indices[mol_id]
+
+			rdmols_mcs_bond_combo_scores[mol_id] = bond_combo_scores[rdmol_mcs_bond_indices]
+			rdmols_mcs_bond_rigidity_scores[mol_id] = bond_rigidity_scores[rdmol_mcs_bond_indices]
+			rdmols_mcs_bond_strain_scores[mol_id] = bond_strain_scores[rdmol_mcs_bond_indices]
+
+			# # Compute the cumulative rigidity between central atom and all other ones
+			# cumrigidity(mol, mol.GetIntProp("atom_center_index"))
+
+			# plot_mol(mol)
+		min_rdmols_mcs_bond_combo_scores = rdmols_mcs_bond_combo_scores.min(axis=0)
+		min_rdmols_mcs_bond_rigidity_scores = rdmols_mcs_bond_rigidity_scores.min(axis=0)
+		min_rdmols_mcs_bond_strain_scores = rdmols_mcs_bond_strain_scores.min(axis=0)
+
+		# Assign bond scores to MCS
+		for mcs_bond_id, scores in enumerate(zip(min_rdmols_mcs_bond_combo_scores, min_rdmols_mcs_bond_rigidity_scores, min_rdmols_mcs_bond_strain_scores)):
+			combo_bond_score, rigidity_bond_score, strain_bond_score = scores
+			mcs_bond = self.mcs.GetBondWithIdx(mcs_bond_id)
+
+			if not np.isnan(combo_bond_score):
+				mcs_bond.SetDoubleProp("combo_score", combo_bond_score)
+				mcs_bond.SetDoubleProp("rigidity_score", rigidity_bond_score)
+				mcs_bond.SetDoubleProp("strain_score", strain_bond_score)
+
+		# Compute the cumulative rigidity between central atom and all other ones
+		cumrigidity(self.mcs, self.mcs_center_atom_index)
+
+		plot_mol(self.mcs)
+
+			# continue
+
+	@classmethod
+	def atom_path_scoring(rdmol, start_atom_index, bond_prop_name):
+		def compute_path_score(path, rdmol, bond_prop_name):
+			path_score = 1.0
+			# NOTE: The first bond and the last bond are ignored because they are not dihedral
+			for i in range(1, len(path) - 2):
+				atom_index_1 = path[i]
+				atom_index_2 = path[i+1]
+
+				bond = rdmol.GetBondBetweenAtoms(atom_index_1, atom_index_2)
+
+				# If bond does not have prop, there is a termini atom (no dihedral)
+				if bond.HasProp("combo_score"):
+					path_score *= bond.GetDoubleProp("combo_score")
+
+			return path_score
+
+		G = rdkit_to_nx(rdmol) # All bond props are copied
+		paths = []
+		for atom in rdmol.GetAtoms():
+			atom_index = atom.GetIdx()
+			path = nx.shortest_path(G, source=start_atom_index, target=atom_index)
+
+			# Convert np.uint64 to int (np.uint64 not supported by rdkit)
+			path = [int(x) for x in path]
+			paths.append(path)
+
+			# NOTE: Distance of two bonds or less is obviously ridig
+			if len(path) < 4:
+				path_score = 1.0
+			else:
+				path_score = compute_path_score(path, rdmol, bond_prop_name)
+
+			atom.SetDoubleProp("center_path_score", path_score)
+
+		# Weight path_score according to distance. Longer is the distance higher is the weigth
+		max_weighted_path_score = 0.0 
+		for path in paths:
+			cum_score = 1.0
+			for atom_index in path:
+				atom = rdmol.GetAtomWithIdx(atom_index)
+				cum_score *= atom.GetDoubleProp("center_path_score")
+
+			weighted_path_score = cum_score * len(path)
+			last_atom = rdmol.GetAtomWithIdx(path[-1])
+			last_atom.SetDoubleProp("weighted_center_path_score", weighted_path_score)
+
+			if weighted_path_score > max_weighted_path_score:
+				max_weighted_path_score = weighted_path_score
+
+
 class LigandsInfo(MolobjectInfo):
 	def __init__(self, struct_filepath, network_filepath):
 		super().__init__(struct_filepath)
 		self.raw_rdmols = None
 		self.clean_rdmols = None
 		self.network = None
+		self.common_ligand_frame = None
 
 	def load(self):
 		suppl = AllChem.SDMolSupplier(self.struct_filepath, sanitize=False, removeHs=False, strictParsing=False)
@@ -128,6 +492,9 @@ class LigandsInfo(MolobjectInfo):
 			))
 
 	def common_atom_frame(self):
+		self.common_ligand_frame = CommonLigandFrame(self.clean_rdmols)
+		self.common_ligand_frame.find()
+
 		step = np.pi / 180
 		scan_angles = np.arange(-np.pi, np.pi+step, step)
 		scan_indices = np.arange(scan_angles.shape[0]).astype(int)
@@ -142,7 +509,7 @@ class LigandsInfo(MolobjectInfo):
 			raise ValueError(f"MCS must contain 3 atoms or more")
 
 		# Get the MCS and sanitize it to get FF parameters.
-		# If it is not sanatized, aromatic atom may not be properly assigned as aromatic
+		# If it is not sanatized, aromatic atoms may not be properly assigned as aromatic
 		tmp_mcs = AllChem.MolFromSmarts(self.mcs_result.smartsString)
 		self.mcs_query = AllChem.Mol(tmp_mcs) # Copy
 		AllChem.SanitizeMol(tmp_mcs) # Inplace
@@ -175,12 +542,20 @@ class LigandsInfo(MolobjectInfo):
 		centroid_distances = np.linalg.norm(mean_atom_positions - mcs_centroid, axis=1)
 		mcs_closest_centroid_index = centroid_distances.argmin()
 
-		breakpoint()
-
 		# for mol in self.clean_rdmols:
 		# Get bond rigidity
 		for mol_id, mol in enumerate(self.clean_rdmols):
 			# The molecule must have 1 conformer only
+			conf = mol.GetConformer(0)
+
+			# Compute dihedral rigidity. Scores are stored as rdkit bond props
+			forcefield.mol_rigidity(conf)
+
+			plot_mol(mol)
+
+			breakpoint()
+
+			continue
 
 			# Copy the molecule because coordinates may change
 			tested_mol = AllChem.Mol(mol)
@@ -197,7 +572,6 @@ class LigandsInfo(MolobjectInfo):
 				# NOTE: It is not possible to change the dihedral angle in saturated cycle. The rigidity
 				# score is set to 1 as well
 				if bond.IsInRing():
-					# NOTE: Could save time!
 					bond_scores[bond.GetIdx()] = (1.0, 1.0)
 				# Else need to check bond rigidity
 				# TODO: Write a function man!
