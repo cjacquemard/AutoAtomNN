@@ -40,7 +40,7 @@ def two_sides_boltzmann_probabilities(E, i, t):
 	left_dE = (E[:i] - E[1:i+1])[::-1]
 	right_dE = E[i+1:] - E[i:-1]
 
-	# Cap minium dE otherwise number is too big
+	# Cap minium dE otherwise number is too big (overflow)
 	left_dE[left_dE < -423.1] = -423.1
 	right_dE[right_dE < -423.1] = -423.1
 
@@ -101,6 +101,10 @@ def mol_rigidity(rdconf):
 	mp = AllChem.MMFFGetMoleculeProperties(rdmol, mmffVariant='MMFF94s')
 	ff = AllChem.MMFFGetMoleculeForceField(rdmol, mp)
 
+	bond_indices = []
+	bond_strain_scores = []
+	bond_rigidity_scores = []
+
 	for rdbond in rdmol.GetBonds():
 		bond_index = rdbond.GetIdx()
 		if bond_index >= rdconf.GetOwningMol().GetNumBonds():
@@ -119,10 +123,11 @@ def mol_rigidity(rdconf):
 				# Bond with termini atom
 				continue
 
+		bond_indices.append(bond_index)
+		bond_strain_scores.append(strain_score)
+		bond_rigidity_scores.append(rigidity_score)
 
-		rdconf.GetOwningMol().GetBondWithIdx(bond_index).SetDoubleProp("strain_score", strain_score)
-		rdconf.GetOwningMol().GetBondWithIdx(bond_index).SetDoubleProp("rigidity_score", rigidity_score)
-		rdconf.GetOwningMol().GetBondWithIdx(bond_index).SetDoubleProp("combo_score", strain_score * rigidity_score)
+	return np.array(bond_indices), np.array(bond_strain_scores), np.array(bond_rigidity_scores)
 
 
 def dihedral_scan(rdconf, ff, index_1, index_2, index_3, index_4):
@@ -144,16 +149,7 @@ def dihedral_scan(rdconf, ff, index_1, index_2, index_3, index_4):
 	# Integrate left and right
 	middle_index = int((len(energies) - 1) / 2)
 
-	try:
-		left_probs, right_probs = two_sides_boltzmann_probabilities(energies, middle_index, 300)
-	except Warning:
-		import matplotlib.pyplot as plt
-		plt.plot(tested_angles, energies)
-		plt.axvline(ref_angle, linestyle="dotted")
-		# plt.axvline(tested_angles[right_index], linestyle="dotted")
-		# plt.axvline(tested_angles[left_index], linestyle="dotted")
-		plt.show()
-		breakpoint()
+	left_probs, right_probs = two_sides_boltzmann_probabilities(energies, middle_index, 300)
 
 	# Find a range (99% of left and right probs)
 	# Set all values above 1 to 1 (capped) to avoid cumulative effect when the starting point is not at a local minima

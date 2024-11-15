@@ -262,6 +262,79 @@ class MolobjectInfo:
 		raise NotImplementedError
 
 
+class MolGraph:
+	@staticmethod
+	def node_path_scoring(G, source_node_index, edge_prop_name):
+		def compute_path_score(path, G, edge_prop_name):
+			path_score = 1.0
+			# NOTE: The first bond and the last bond are ignored because they are not dihedral
+			for i in range(1, len(path) - 2):
+				node_index_1 = path[i]
+				node_index_2 = path[i+1]
+
+				if G.has_edge(node_index_1, node_index_2):
+					edge_data = G.get_edge_data(node_index_1, node_index_2)
+					if edge_prop_name in edge_data:
+						path_score *= edge_data[edge_prop_name]
+					else:
+						print("WARNING: Edge has no prop {edge_prop_name}")
+				else:
+					ValueError("Nodes {node_index_1} and {node_index_2} are not connected")
+
+			return path_score
+
+		# G = rdkit_to_nx(rdmol) # All bond props are copied
+		paths = []
+		node_indices = []
+		node_scores = []
+		for target_node_index in G.nodes:
+			path = nx.shortest_path(G, source=source_node_index, target=target_node_index)
+
+			# Convert np.uint64 to int (np.uint64 not supported by rdkit)
+			path = [int(x) for x in path]
+			paths.append(path)
+
+			# NOTE: Distance of two bonds or less is obviously ridig
+			if len(path) < 4:
+				path_score = 1.0
+			else:
+				path_score = compute_path_score(G, path, edge_prop_name)
+
+			node_indices.append(target_node_index)
+			node_scores.append(path_score)
+
+		return node_indices, node_scores, paths
+
+	@staticmethod
+	def node_weighted_path_scoring(G, node_indices, node_scores, paths):
+		# Weight path_score according to distance. Longer is the distance higher is the weigth
+		weighted_node_indices = []
+		weighted_score_indices = []
+
+		for path in paths:
+			path_score = 1.0
+			for path_node_index in path:
+				node_score = node_scores[np.argwhere(node_indices == path_node_index)[0][0]]
+				path_score *= node_score
+
+			weighted_path_score = path_score * len(path)
+
+			weighted_node_indices.append(path[-1])
+			weighted_score_indices.append(path_score)
+
+		return weighted_node_indices, weighted_score_indices
+
+class MCSHandler:
+	def __init__(self, rdmols):
+
+		self.mcs_result = None
+		self.mcs_query = None
+		self.mcs_mol = None
+
+	def search(self):
+		pass
+
+
 class CommonLigandFrame:
 	# NOTE: rdmols should be sanitized otherwise the forcefield parameters may be wrong
 	# Most of computed values are stored as rdkit Property
@@ -273,8 +346,7 @@ class CommonLigandFrame:
 		self.mcs_mol = None
 
 	def mcs(self):
-		# Get Maximum Common Substructure
-		self.mcs_result = rdFMCS.FindMCS(self.rdmols)
+
 
 		# The ligands must share at least a substructure containing 3 or more atoms.
 		# We need 3 atoms to restraint ligand 1 and ligand 2 during the simulation.
@@ -364,22 +436,29 @@ class CommonLigandFrame:
 			conf = mol.GetConformer(0)
 
 			# Compute dihedral rigidity. Scores are stored as rdkit bond props
-			forcefield.mol_rigidity(conf)
+			scored_bond_indices, bond_strain_scores, bond_rigidity_scores = forcefield.mol_rigidity(conf)
+
+			# Add bond scores to array that corresponds to the MCS bonds
+			rdmol_mcs_bond_indices = self.rdmols_mcs_bond_indices[mol_id]
+
+			scored_mcs_bondscored_bond_indices[np.isin(scored_bond_indices, rdmol_mcs_bond_indices)]
+			
+
+			mcs_indices = np.where(np.isin(bond_indices, rdmol_mcs_bond_indices))
+
+			breakpoint()
+
+
 
 			bond_combo_indices, bond_combo_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "combo_score", filtering=False)
 			bond_rigidity_indices, bond_rigidity_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "rigidity_score", filtering=False)
 			bond_strain_indices, bond_strain_scores, _ = RdkitHelper.props_to_array(mol.GetBonds(), "strain_score", filtering=False)
 
-			rdmol_mcs_bond_indices = self.rdmols_mcs_bond_indices[mol_id]
 
 			rdmols_mcs_bond_combo_scores[mol_id] = bond_combo_scores[rdmol_mcs_bond_indices]
 			rdmols_mcs_bond_rigidity_scores[mol_id] = bond_rigidity_scores[rdmol_mcs_bond_indices]
 			rdmols_mcs_bond_strain_scores[mol_id] = bond_strain_scores[rdmol_mcs_bond_indices]
 
-			# # Compute the cumulative rigidity between central atom and all other ones
-			# cumrigidity(mol, mol.GetIntProp("atom_center_index"))
-
-			# plot_mol(mol)
 		min_rdmols_mcs_bond_combo_scores = rdmols_mcs_bond_combo_scores.min(axis=0)
 		min_rdmols_mcs_bond_rigidity_scores = rdmols_mcs_bond_rigidity_scores.min(axis=0)
 		min_rdmols_mcs_bond_strain_scores = rdmols_mcs_bond_strain_scores.min(axis=0)
@@ -400,56 +479,6 @@ class CommonLigandFrame:
 		plot_mol(self.mcs)
 
 			# continue
-
-	@classmethod
-	def atom_path_scoring(rdmol, start_atom_index, bond_prop_name):
-		def compute_path_score(path, rdmol, bond_prop_name):
-			path_score = 1.0
-			# NOTE: The first bond and the last bond are ignored because they are not dihedral
-			for i in range(1, len(path) - 2):
-				atom_index_1 = path[i]
-				atom_index_2 = path[i+1]
-
-				bond = rdmol.GetBondBetweenAtoms(atom_index_1, atom_index_2)
-
-				# If bond does not have prop, there is a termini atom (no dihedral)
-				if bond.HasProp("combo_score"):
-					path_score *= bond.GetDoubleProp("combo_score")
-
-			return path_score
-
-		G = rdkit_to_nx(rdmol) # All bond props are copied
-		paths = []
-		for atom in rdmol.GetAtoms():
-			atom_index = atom.GetIdx()
-			path = nx.shortest_path(G, source=start_atom_index, target=atom_index)
-
-			# Convert np.uint64 to int (np.uint64 not supported by rdkit)
-			path = [int(x) for x in path]
-			paths.append(path)
-
-			# NOTE: Distance of two bonds or less is obviously ridig
-			if len(path) < 4:
-				path_score = 1.0
-			else:
-				path_score = compute_path_score(path, rdmol, bond_prop_name)
-
-			atom.SetDoubleProp("center_path_score", path_score)
-
-		# Weight path_score according to distance. Longer is the distance higher is the weigth
-		max_weighted_path_score = 0.0 
-		for path in paths:
-			cum_score = 1.0
-			for atom_index in path:
-				atom = rdmol.GetAtomWithIdx(atom_index)
-				cum_score *= atom.GetDoubleProp("center_path_score")
-
-			weighted_path_score = cum_score * len(path)
-			last_atom = rdmol.GetAtomWithIdx(path[-1])
-			last_atom.SetDoubleProp("weighted_center_path_score", weighted_path_score)
-
-			if weighted_path_score > max_weighted_path_score:
-				max_weighted_path_score = weighted_path_score
 
 
 class LigandsInfo(MolobjectInfo):

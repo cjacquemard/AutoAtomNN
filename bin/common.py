@@ -49,32 +49,18 @@ class RdkitHelper:
 		return np.array(indices), np.array(values), np.array(annotated_rdkit_objects)		
 
 	@staticmethod
-	def array_to_props(rdkit_objects, prop_name, ignore_missing=True, filtering=True):
-		# You can pass GetBonds() or GetAtoms() directly
-		rdkit_objects = [x for x in rdkit_objects]
+	def indices_to_rdbonds(rdmol, indices):
+		rdbonds = []
+		for index in indices:
+			if index >= rmdol.GetNumBonds():
+				raise IndexError("Index {index} out of range for rdbond")
 
-		indices = []
-		values = []
-		annotated_rdkit_objects = []
-		for ro in rdkit_objects:
-			d = ro.GetPropsAsDict()
+			rdbonds.append(rdmol.GetBondWithIdx(index))
 
-			if prop_name not in d:
-				if not ignore_missing:
-					raise ValueError("Prop name does not exist")
-				else:
-					if filtering:
-						continue
-					else:
-						indices.append(ro.GetIdx())
-						values.append(np.nan)
-						annotated_rdkit_objects.append(ro)						
-			else:
-				indices.append(ro.GetIdx())
-				values.append(d[prop_name])
-				annotated_rdkit_objects.append(ro)
+		return rdbonds
 
-		return np.array(indices), np.array(values), np.array(annotated_rdkit_objects)	
+	
+
 
 
 class LigandLoader:
